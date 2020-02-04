@@ -1,2 +1,3 @@
-# tech-books
-A summary of technical books
+# Tech Summary
+
+A summary of technical readings
