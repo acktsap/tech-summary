@@ -53,6 +53,12 @@ be thread safe, and a thread-safe program may contain classes that are not threa
 
 ## 2.1. What is Thread Safety
 
+Correctness
+
+```text
+Correctness means that a class conforms to its specification. A good specification defines invariants constraining an object's state and post - conditions describing the effects of its operations. Since we often don't write adequate specifications for our classes, how can we possibly know they are correct? We can't, but that doesn't stop us from using them anyway once we've convinced ourselves that "the code works". This "code confidence" is about as close as many of us get to correctness, so let's just assume that single-threaded correctness is something that "we know it when we see it". Having optimistically defined "correctness" as something that can be recognized, we can now define thread safety in a somewhat less circular way: a class is thread-safe when it continues to behave correctly when accessed from multiple threads.
+```
+
 Thread Safety
 
 ```text
@@ -66,6 +72,8 @@ Thread-safe class
 ```text
 Thread-safe classes encapsulate any needed synchronization so that clients need not provide their own
 ```
+
+> Thread-safe class는 synchronization 관련 처리를 내부적으로 해줌
 
 Stateless objects are always thread-safe.
 
@@ -81,9 +89,11 @@ public class StatelessFactorizer implements Servlet {
 }
 ```
 
-> eg. Service module in Spring Framework
+> Stateless object는 항상 thread-safe함. (eg. Service in Spring Framework)
 
 ## 2.2. Atomicity
+
+Race condition 예제
 
 ```java
 @NotThreadSafe
@@ -112,7 +122,9 @@ right answer relies on lucky timing. The most common type of race condition is
 check-then-act, where a potentially stale observation is used to make a decision on what to do next.
 ```
 
-check-tne-act on Lazy Initialization
+> Operation의 correctness가 timing에 의존적인 경우 race condition이라고 함. 대표적으로 check-then-act가 있음.
+
+check-then-act on Lazy Initialization
 
 ```java
 @NotThreadSafe
@@ -136,6 +148,8 @@ Operations A and B are atomic with respect to each other if, from the perspectiv
 a thread executing A, when another thread executes B, either all of B has executed or none of it has. An atomic operation is one that is atomic with respect to all operations, including itself, that operate on the same state.
 ```
 
+> Operation A의 관점에서 Operation B가 실행되거나 전혀 실행되지 않으면 Atomic하다고 함
+
 Existing Atomic Object
 
 ```java
@@ -156,11 +170,14 @@ public class CountingFactorizer implements Servlet {
 Use existing thread-safe objects
 
 ```text
-Where practical, use existing thread-safe objects, like AtomicLong, to manage your class's state. It is simpler to reason
-about the possible states and state transitions for existing thread-safe objects than it is for arbitrary state variables, and this makes it easier to maintain and verify thread safety.
+Where practical, use existing thread-safe objects, like AtomicLong, to manage your class's state. It is simpler to reason about the possible states and state transitions for existing thread-safe objects than it is for arbitrary state variables, and this makes it easier to maintain and verify thread safety.
 ```
 
+> 가능한한 AtomicXXX 같은 이미 존재하는 Object를 사용해라
+
 ## 2.3. Locking
+
+Race condition with atomic object
 
 ```java
 @NotThreadSafe
@@ -205,11 +222,15 @@ public synchronized void method() {
 Every Java object can implicitly act as a lock for purposes of synchronization; these built-in locks are called intrinsic locks or monitor locks. The lock is automatically acquired by the executing thread before entering a synchronized block and automatically released when control exits the synchronized block, whether by the normal control path or by throwing an exception out of the block
 ```
 
+> `synchronized` keyword는 intrinsic lock (or monitor lock)을 걸음. `synchronized` block에 들어가면 해당 lock을 획득하고 나오면 해당 lock을 놓음
+
 Lock & Transactional applications
 
 ```text
 Since only one thread at a time can execute a block of code guarded by a given lock, the synchronized blocks guarded by the same lock execute atomically with respect to one another. In the context of concurrency, atomicity means the same thing as it does in transactional applications - that a group of statements appear to execute as a single, indivisible unit.
 ```
+
+> block단위로 lock을 거는 것은 그 부분에 대한 transactional을 보장해줌
 
 ```java
 @ThreadSafe
@@ -264,26 +285,26 @@ public class LoggingWidget extends Widget {
 
 ```text
 For each mutable state variable that may be accessed by more than one thread, all accesses to that variable must be performed with the same lock held. In this case, we say that the variable is guarded by that lock.
-```
 
-```text
 Every shared, mutable variable should be guarded by exactly one lock. Make it clear to maintainers which lock that is.
-```
 
-```text
 For every invariant that involves more than one variable, all the variables involved in that invariant must be guarded by the same lock.
-```
 
-```text
 If synchronization is the cure for race conditions, why not just declare every method synchronized? It turns out that such indiscriminate application of synchronized might be either too much or too little synchronization. Merely synchronizing every method, as Vector does, is not enough to render compound actions on a Vector atomic
 ```
 
 ```java
 // This attempt at a put-if-absent operation has a race condition,
 // even though both contains and add are atomic.
-if (!vector.contains(element))
+if (!vector.contains(element)) {
   vector.add(element);
+}
 ```
+
+> mutable한 모든 변수의 R/W에 대해 lock을 걸어야 함\
+> 그 lock은 하나여야함\
+> invarient가 여러 변수에 관계되어 있는 경우 그 변수들은 같은 lock에 감싸져 있어야함\
+> 과도한 synchronization을 피하도록 하라. vector처럼 각자의 operation이 atomic하더라도 그것을 사용하는 operation block에 대한 동시성이 보장되지는 않음\
 
 ## 2.5. Liveness and Performance
 

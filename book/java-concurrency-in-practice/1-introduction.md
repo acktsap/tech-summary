@@ -22,7 +22,7 @@ Threads are sometimes called lightweight processes, and most modern operating sy
 Since threads share the memory address space of their owning process, all threads within a process have access to the same variables and allocate objects from the same heap, which allows finer-grained data sharing than inter􀍲process mechanisms. But without explicit synchronization to coordinate access to shared data, a thread may modify variables that another thread is in the middle of using, with unpredictable results
 ```
 
-> Resource utilizaiton, Fairness, Converience 등의 이유로 인해 Thread가 나오게 됨. Thread는 Heaㄷ 등 Process내의 자원을 공유하나 동시성 문제가 발생할 수 있음.
+> Resource utilizaiton, Fairness, Converience 등의 이유로 인해 Thread가 나오게 됨. Thread는 Heap 등 Process내의 자원을 공유하나 동시성 문제가 발생할 수 있음.
 
 ## 1.2. Benefits of Threads
 
@@ -102,7 +102,8 @@ Liveness Hazards
 While safety means "nothing bad ever happens", liveness concerns the complementary goal that "something good eventually happens". A liveness failure occurs when an activity gets into a state such that it is permanently unable to make forward progress. One form of liveness failure that can occur in sequential programs is an inadvertent infinite loop, where the code that follows the loop never gets executed. The use of threads introduces additional liveness risks. For example, if thread A is waiting for a resource that thread B holds exclusively, and B never releases it, A will wait forever.
 ```
 
-> 동기화를 이상하게 하면 다음 작업을 수행하지 못하는 Liveness Hazards를 만날 수 있음
+> 동기화를 이상하게 하면 다음 작업을 수행하지 못하는 Liveness Hazards를 만날 수 있음\
+> Liveness는 스레드에 있는 문제의 카테고리임. Liveness 문제는 deadlock, live lock, starvation이 있음
 
 Performance Hazards
 
