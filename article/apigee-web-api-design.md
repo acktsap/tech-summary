@@ -92,11 +92,11 @@ Use verbs not nouns
 
 ### Supporting multiple formats
 
--> Use just json. No multiple formats
+> Use just json. No multiple formats
 
 ### What about attribute names
 
--> Use just json (camelcase, eg. "createdAt": 1320296464)
+> Use just json (camelcase, eg. "createdAt": 1320296464)
 
 ### Tips for search
 
@@ -110,15 +110,15 @@ api.twitter.com\
 stream.twitter.com\
 search.twitter.com
 
--> In a small field, place domain in an endpoint like `localhost:xxx/api/v1/` or `localhost:xxx/stream/v1/`
+> In a small field, place domain in an endpoint like `localhost:xxx/api/v1/` or `localhost:xxx/stream/v1/`
 
 ### Tips for handling exceptional behavior
 
--> Just throw a pass
+> Just throw a pass
 
 ### Authentication
 
--> Beyond the api design scope
+> Beyond the api design scope
 
 ### Making requests on your API
 
@@ -222,11 +222,11 @@ Response
 
 ### Chatty APIs
 
--> what?
+> what?
 
 ### Complement with an SDK
 
--> what?
+> what?
 
 ### The API Facade Pattern
 
