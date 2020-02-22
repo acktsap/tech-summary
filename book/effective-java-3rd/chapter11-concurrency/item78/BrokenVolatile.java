@@ -16,14 +16,15 @@ public class BrokenVolatile {
 
     public static void main(String[] args)
             throws InterruptedException {
-        Runnable runnable = () -> System.out.println(generateSerialNumber());
-        for (int i = 0; i < 100; ++i) {
-            new Thread(runnable).start();
+        ExecutorService service = Executors.newCachedThreadPool();
+        Runnable runnable = () -> generateSerialNumber();
+        for (int i = 0; i < 1000; ++i) {
+            service.submit(runnable);
         }
 
-        Thread.sleep(500L);
+        Thread.sleep(3000);
 
-        // do not print 100
+        // do not print 1000
         System.out.println("Final result : " + nextSerialNumber);
     }
 }
