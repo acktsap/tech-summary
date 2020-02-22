@@ -3,24 +3,9 @@
 - [2. Thread Safety](#2-thread-safety)
   - [2.1. What is Thread Safety](#21-what-is-thread-safety)
   - [2.2. Atomicity](#22-atomicity)
-    - [Race Conditions](#race-conditions)
-    - [Atomic operation](#atomic-operation)
   - [2.3. Locking](#23-locking)
-    - [Intrinsic Locks](#intrinsic-locks)
-    - [Reentrancy](#reentrancy)
   - [2.4. Guarding State with Locks](#24-guarding-state-with-locks)
   - [2.5. Liveness and Performance](#25-liveness-and-performance)
-
-Writing Thread-safe code
-
-```text
-Writing thread safe code is, at its core, about managing access to state, and in particular to shared, mutable state.
-
-Informally, an object's state is its data, stored in state variables such as instance or static fields. An object's state may include fields from other, dependent objects;
-
-The primary mechanism for synchronization in Java is the
-synchronized keyword, which provides exclusive locking, but the term "synchronization" also includes the use of volatile variables, explicit locks, and atomic variables
-```
 
 3 ways to fix thread-safety
 
@@ -35,12 +20,11 @@ If multiple threads access the same mutable state variable without appropriate s
 Encapulation & Thread-safety
 
 ```text
-The less code that has access to a particular variable, the
-easier it is to ensure that all of it uses the proper synchronization, and the easier
-it is to reason about the conditions under which a given variable might be accessed.
-
+The less code that has access to a particular variable, the easier it is to ensure that all of it uses the proper synchronization, and the easier it is to reason about the conditions under which a given variable might be accessed.
 When designing thread safe classes, good object-oriented techniques encapsulation, immutability, and clear specification of invariants are your best friends.
 ```
+
+> Encapulation을 통해 class의 내부 상태를 보여주지 않는 것을 잘 활용하면 thread-safe한 class를 작성하는데 도움을 줄 수 있다.
 
 thread-safe class vs thread-safe program
 
@@ -50,6 +34,8 @@ thus far. Is a thread-safe program one that is constructed entirely of thread-sa
 Not necessarily - a program that consists entirely of thread-safe classes may not
 be thread safe, and a thread-safe program may contain classes that are not thread-safe.
 ```
+
+> class를 thread-safe하게 만든다고 program이 thread-safe하지는 않음. 두개는 다른 개념임.
 
 ## 2.1. What is Thread Safety
 
@@ -112,7 +98,7 @@ public class UnsafeCountingFactorizer implements Servlet {
 }
 ```
 
-### Race Conditions
+Race Conditions
 
 ```java
 UnsafeCountingFactorizer has several race conditions that make its results unreliable.
@@ -141,7 +127,7 @@ public class LazyInitRace {
 }
 ```
 
-### Atomic operation
+Atomic operation
 
 ```text
 Operations A and B are atomic with respect to each other if, from the perspective of
@@ -204,7 +190,7 @@ public class UnsafeCachingFactorizer implements Servlet {
 }
 ```
 
-### Intrinsic Locks
+Intrinsic Locks
 
 intrinsic locks (monitor locks)
 
@@ -254,7 +240,7 @@ public class SynchronizedFactorizer implements Servlet {
 }
 ```
 
-### Reentrancy
+Reentrancy
 
 ```text
 When a thread requests a lock that is already held by another thread, the requesting
@@ -351,3 +337,5 @@ There is frequently a tension between simplicity and performance. When implement
 
 Avoid holding locks during lengthy computations or operations at risk of not completing quickly such as network or console I/O.
 ```
+
+> 그냥 synchronization은 최대한 적고 충분해 함. 과도한 synchronization은 성능 이상이 걸릴 수 있음
