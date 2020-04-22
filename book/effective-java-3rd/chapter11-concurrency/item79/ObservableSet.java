@@ -22,10 +22,9 @@ public class ObservableSet<E> extends ForwardingSet<E> {
     }
 
 
-    // Broken - invokes alien method from synchronized block! Oversynchronized!!
+    // Broken - invokes alien method from synchronized block! Over-synchronized!!
 
-    private final List<SetObserver<E>> observers
-            = new ArrayList<>();
+    private final List<SetObserver<E>> observers = new ArrayList<>();
 
     public void addObserver(SetObserver<E> observer) {
         synchronized(observers) {

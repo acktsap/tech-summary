@@ -1,6 +1,25 @@
 # Apigee web api design
 
-[apigee-web-api-design](https://pages.apigee.com/rs/apigee/images/api-design-ebook-2012-03.pdf)
+- [Apigee web api design](#apigee-web-api-design)
+  - [Summarize & thoughts](#summarize--thoughts)
+    - [Nouns are good; verbs are bad](#nouns-are-good-verbs-are-bad)
+    - [Plural nouns and concrete names](#plural-nouns-and-concrete-names)
+    - [Simplify associations - sweep complexity under the ‘?’](#simplify-associations---sweep-complexity-under-the)
+    - [Handling errors](#handling-errors)
+    - [Tips for versioning](#tips-for-versioning)
+    - [Pagination and partial response](#pagination-and-partial-response)
+    - [What about responses that don’t involve resources](#what-about-responses-that-dont-involve-resources)
+    - [Supporting multiple formats](#supporting-multiple-formats)
+    - [What about attribute names](#what-about-attribute-names)
+    - [Tips for search](#tips-for-search)
+    - [Consolidate API requests in one subdomain](#consolidate-api-requests-in-one-subdomain)
+    - [Tips for handling exceptional behavior](#tips-for-handling-exceptional-behavior)
+    - [Authentication](#authentication)
+    - [Making requests on your API](#making-requests-on-your-api)
+    - [Chatty APIs](#chatty-apis)
+    - [Complement with an SDK](#complement-with-an-sdk)
+    - [The API Facade Pattern](#the-api-facade-pattern)
+  - [Reference](#reference)
 
 ## Summarize & thoughts
 
@@ -242,3 +261,6 @@ Subsystems often get more complex as they evolve."
 
 - Design Patterns – Elements of Reusable Object-Oriented Software
 
+## Reference
+
+[apigee-web-api-design](https://pages.apigee.com/rs/apigee/images/api-design-ebook-2012-03.pdf)
