@@ -22,9 +22,10 @@ public class BrokenVolatile {
             service.submit(runnable);
         }
 
-        Thread.sleep(3000);
+        Thread.sleep(2000);
 
         // do not print 1000
         System.out.println("Final result : " + nextSerialNumber);
+        service.shutdown();
     }
 }

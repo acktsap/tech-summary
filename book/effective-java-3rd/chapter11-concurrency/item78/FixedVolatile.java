@@ -11,14 +11,14 @@ public class FixedVolatile {
 
     public static void main(String[] args)
             throws InterruptedException {
-        Runnable runnable = () -> System.out.println(generateSerialNumber());
-        for (int i = 0; i < 100; ++i) {
+        Runnable runnable = () -> generateSerialNumber();
+        for (int i = 0; i < 1000; ++i) {
             new Thread(runnable).start();
         }
 
         TimeUnit.MILLISECONDS.sleep(300);
 
-        // prints 100
+        // prints 1000
         System.out.println("Final result : " + nextSerialNum.get());
     }
 }

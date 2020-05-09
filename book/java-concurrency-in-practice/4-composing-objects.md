@@ -17,7 +17,7 @@
   - [4.4. Adding Functionality to Existing Thread-safe Classes](#44-adding-functionality-to-existing-thread-safe-classes)
     - [By extension](#by-extension)
     - [By client-side locking](#by-client-side-locking)
-    - [By composision>](#by-composision)
+    - [By composision](#by-composision)
   - [4.5. Documenting Synchronization Policies](#45-documenting-synchronization-policies)
     - [Interpreting Vague Documentation](#interpreting-vague-documentation)
 
@@ -44,7 +44,13 @@ An object's state starts with its fields. If they are all of primitive type, the
 
 ### Gathering Synchronization Requirements
 
-TODO
+Making a class thread-safe means ensuring that its invariants hold under concurrent access; this requires reasoning about its state. Objects and variables have a state space: the range of possible states they can take on. The smaller this state space, the easier it is to reason about. By using final fields wherever practical, you make it simpler to analyze the possible states an object can be in. (In the extreme case, immutable objects can only be in a single state.).
+
+Constraints placed on states or state transitions by invariants and post-conditions create additional synchronization or encapsulation requirements. If certain states are invalid, then the underlying state variables must be encapsulated, otherwise client code could put the object into an invalid state. If an operation has invalid state transitions, it must be made atomic. On the other hand, if the class does not impose any such constraints, we may be able to relax encapsulation or serialization requirements to obtain greater flexibility or better performance
+
+You cannot ensure thread safety without understanding an object's invariants and post-conditions. Constraints on the valid values or state transitions for state variables can create atomicity and encapsulation requirements
+
+> object의 invariant랑 post-condition을 모르고는 thread-safety를 말할 수 없음. invariant를 지킬 수 있게 synchronized를 걸어야 함. 가능하면 state를 줄이는 것이 좋음. 그래서 final keyword를 최대한 쓰는게 좋음. 그래서 immutable object가 제일 좋음.
 
 ### State-dependent Operations
 
@@ -54,7 +60,7 @@ In a single-threaded program, if a precondition does not hold, the operation has
 
 The built-in mechanisms for efficiently waiting for a condition to become true - wait and notify - are tightly bound to intrinsic locking, and can be difficult to use correctly. To create operations that wait for a precondition to become true before proceeding, it is often easier to use existing library classes, such as blocking queues or semaphores, to provide the desired state-dependent behavior.
 
-> concurrent program에서는 state-dependent operation에 대한 precondition이 다른 thread에 의해 만족될 수 있음. 이거를 만족시키는 방법은 wait-notify의 low-level api를 사용하는 것 또는 blocking queue, semephore등 high-level api를 사용하는 것이 있다.
+> concurrent program에서는 state-dependent operation에 대한 precondition이 다른 thread에 의해 만족될 수 있음. 이거를 만족시키는 방법은 wait-notify의 low-level api를 사용하는 것 또는 blocking queue, semephore등 high-level api를 사용하는 것이 있다. wait-notify의 low-level api는 느리고 어렵기 때문에 high-level api를 사용하는 것을 추천.
 
 ### State Ownership
 
@@ -108,7 +114,8 @@ public class PrivateLock {
 }
 ```
 
-> Java monitor pattern은 mutable state의 concurrency를 object's intrinsic lock으로 막아서 보장. Instance confinement에 대한 조건을 만족시키는 방법중 하나임. 어떠한 lock을 사용해도 ㄱㅊ음. 실제 Java monitor는 monitor에 들어갈 때 monitorenter를 실행하고 나갈 때 monitorexit을 실행시킴.
+> Java monitor pattern은 mutable state의 concurrency를 object's intrinsic lock으로 막아서 보장. Instance confinement에 대한 조건을 만족시키는 방법중 하나임. 어떠한 lock을 사용해도 ㄱㅊ음.\
+> 실제 Java monitor는 monitor에 들어갈 때 monitorenter를 실행하고 나갈 때 monitorexit을 실행시킴.
 
 ## 4.3. Delegating Thread Safety
 
@@ -219,15 +226,19 @@ public class VisualComponent {
   // so, delegate its thread safety obligations to two underlying thread-safe lists
   private final List<KeyListener> keyListeners = new CopyOnWriteArrayList<KeyListener>();
   private final List<MouseListener> mouseListeners = new CopyOnWriteArrayList<MouseListener>();
+
   public void addKeyListener(KeyListener listener) {
     keyListeners.add(listener);
   }
+
   public void addMouseListener(MouseListener listener) {
     mouseListeners.add(listener);
   }
+
   public void removeKeyListener(KeyListener listener) {
     keyListeners.remove(listener);
   }
+
   public void removeMouseListener(MouseListener listener) {
     mouseListeners.remove(listener);
   }
@@ -273,7 +284,10 @@ public class NumberRange {
 
 ### Publishing Underlying State Variables
 
-TODO
+If a state variable is thread-safe, does not participate in any invariants that constrain its value, and has no prohibited state transitions for any of its operations, then it can safely be published.
+
+> object의 invariant에 관계되지 않는 객체들만 publishing이 가능하게 하셈.\
+> Immutable object로 만들면 에초에 문제 없을듯.
 
 ## 4.4. Adding Functionality to Existing Thread-safe Classes
 
@@ -285,7 +299,7 @@ Extension is more fragile than adding code directly to a class, because the impl
 @ThreadSafe
 public class BetterVector<E> extends Vector<E> {
   public synchronized boolean putIfAbsent(E x) {
-  boolean absent = !contains(x);
+    boolean absent = !contains(x);
     if (absent)
       add(x);
     return absent;
@@ -320,7 +334,7 @@ public class ListHelper<E> {
 
 > Client side에서 thread-safe object가 어떤 것으로 lock하는지 알아내서 이것으로 lock을 하는 방법이 있음. But 상속처럼 base class의 구현에 종속되는 단점이 있음.
 
-### By composision>
+### By composision
 
 ImprovedList adds an additional level of locking using its own intrinsic lock. It does not care whether the underlying List is thread-safe, because it provides its own consistent locking that provides thread safety even if the List is not thread-safe or changes its locking implementation.
 
@@ -330,14 +344,18 @@ While the extra layer of synchronization may add some small performance penalty,
 @ThreadSafe
 public class ImprovedList<T> implements List<T> {
   private final List<T> list;
+
   public ImprovedList(List<T> list) { this.list = list; }
+
   public synchronized boolean putIfAbsent(T x) {
     boolean contains = list.contains(x);
     if (contains)
       list.add(x);
     return !contains;
   }
+
   public synchronized void clear() { list.clear(); }
+
   // ... similarly delegate other List methods
 }
 ```
@@ -354,10 +372,9 @@ Crafting a synchronization policy requires a number of decisions: which variable
 
 ### Interpreting Vague Documentation
 
-```text
 You are going to have to guess. One way to improve the quality of your guess is to interpret the specification from the perspective of someone who will implement it (such as a container or database vendor), as opposed to someone who will merely use it.
 
 Servlets are always called from a container􀍲managed thread, and it is safe to assume that if there is more than one such thread, the container knows this. The servlet container makes available certain objects that provide service to multiple servlets, such as HttpSession or ServletContext. So the servlet container should expect to have these objects accessed concurrently, since it has created multiple threads and called methods like Servlet.service from them that could reasonably be expected to access the ServletContext.
-```
 
-> 애매한 thread-safety에 대한 docs에 대해서는 그 인터페이스의 구현자라고 생각해라. 는 잘 모르겠음 걍 개소리 같고 소스를 까보거나 아예 가정을 하지 않는게 최고 아닐까?
+> 애매한 thread-safety에 대한 docs에 대해서는 그 인터페이스의 구현자라고 생각해라.\
+> 는 잘 모르겠음 걍 개소리 같고 소스를 까보거나 아예 가정을 하지 않는게 최고 아닐까?
