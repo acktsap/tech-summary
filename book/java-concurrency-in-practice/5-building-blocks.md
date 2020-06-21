@@ -284,10 +284,315 @@ public class TaskRunnable implements Runnable {
 
 ### Latches
 
+- Latch
+  - Latch는 스스로가 terminal state가 되기 전까지 thread의 동작을 늦춤
+  - 마치 문처럼 terminal state가 되기 전까지는 thread들이 동작을 하지 않으나 문이 열린 뒤로는 동작을 시작함.
+  - But 한번 열린 문은 닫히지 않음
+  - 그래서 one-time precondition이 완료되기 전까지 동작을 멈추는데 사용됨
+- CountDownLatch
+  - 특정 값으로 초기화 되었다가 event가 발생 하면 count를 내림 (countDown)
+  - 사용하는 쪽에서는 `countDownLatch.await()`을 하면 count가 0이 될 때 까지 기다림
+
+```java
+public class TestHarness {
+  public long timeTasks(int nThreads, final Runnable task) throws InterruptedException {
+    final CountDownLatch startGate = new CountDownLatch(1);
+    final CountDownLatch endGate = new CountDownLatch(nThreads);
+    for (int i = 0; i < nThreads; i++) {
+      Thread t = new Thread() {
+        public void run() {
+          try {
+            startGate.await();
+            try {
+              task.run();
+            } finally {
+              endGate.countDown();
+            }
+          } catch (InterruptedException ignored) { }
+        }
+      };
+      t.start();
+    }
+
+    long start = System.nanoTime();
+    startGate.countDown(); // starts all thread
+    endGate.await(); // waits for all thread to be completed
+    long end = System.nanoTime();
+
+    return end-start;
+  }
+}
+```
+
 ### FutureTask
+
+Future, Callable을 상속하며 3가지 상태가 있음 (waiting-to-run, running, completed)
+
+`futureTask.get()`했을 때 값이 있으면 바로 리턴, 없으면 완료 될 때 까지 기다림. 한번 완료되면 계속 기다림
+
+Executor Framework에서 async task를 표현하기 위해서 사용. 보통 오래 걸리는 작업을 해당 결과값을 요청받기 전에 미리 끝내놓을 때 사용
+
+```java
+public class Preloader {
+  private final FutureTask<ProductInfo> future =
+    new FutureTask<ProductInfo>(new Callable<ProductInfo>() {
+      public ProductInfo call() throws DataLoadException {
+        return loadProductInfo();
+      }
+    });
+
+  private final Thread thread = new Thread(future);
+
+  // 끝내는 방법을 제공. 생성자에서 자동으로 알아서 실행하면 여전히 로딩시간이 느려짐
+  public void start() { thread.start(); }
+  
+  // start를 미리 해두고 get을 함
+  public ProductInfo get() throws DataLoadException, InterruptedException {
+    try {
+      return future.get();
+    } catch (ExecutionException e) { // future.get() throws ExecutionException
+      Throwable cause = e.getCause();
+      if (cause instanceof DataLoadException)
+        throw (DataLoadException) cause;
+      else
+        throw launderThrowable(cause);
+    }
+  }
+
+ /**
+  * To throw as RuntimeException since ExecutionException.getCause returns Throwable
+  *
+  * If the Throwable is an Error, throw it; if it is a
+  * RuntimeException return it, otherwise throw IllegalStateException
+  */
+  public static RuntimeException launderThrowable(Throwable t) {
+    if (t instanceof RuntimeException)
+      return (RuntimeException) t;
+    else if (t instanceof Error)
+      throw (Error) t;
+    else
+      throw new IllegalStateException("Not unchecked", t);
+  }
+}
+```
 
 ### Semaphores
 
+Semaphore은 공유 자원에 동시에 몇개가 접근할 수 있는지를 제어함.
+
+Semaphore는 가상 permit을 관리함. Thread가 Semaphore에 요청을 하면 permit을 받아서 작업하고 완료 후 permit을 반납함. 
+
+한정된 자원에 요청을 했을 때 자원이 없는 경우 blocking상태로 만들 고 싶을 때 좋음. 예시로 db connection pool이 있음. BlockingQueue로 그럴 때 사용할 수 있음.
+
+Semaphore는 또한 일단적인 Collection을 blocking bounded상태로 만들 때 사용할 수 있음.
+
+```java
+// ?? 이해안됨
+public class BoundedHashSet<T> {
+  private final Set<T> set;
+  private final Semaphore sem;
+
+  // collection 크기 제한
+  public BoundedHashSet(int bound) {
+    this.set = Collections.synchronizedSet(new HashSet<T>());
+    this.sem = new Semaphore(bound);
+  }
+
+  public boolean add(T o) throws InterruptedException {
+    sem.acquire();
+    boolean wasAdded = false;
+    try {
+      wasAdded = set.add(o);
+      return wasAdded;
+    } finally {
+      if (!wasAdded)
+        sem.release();
+    }
+  }
+
+  public boolean remove(Object o) {
+    boolean wasRemoved = set.remove(o);
+    if (wasRemoved)
+      sem.release();
+    return wasRemoved;
+  }
+}
+```
+
 ### Barriers
 
+모든 thread가 barrier 위치에 도착해야 관문이 열림. Latch가 event를 위한 동기화 클래스라면 barrier는 thread를 위한 동기화 클래스임.
+
+CyclicBarrier를 이용하면 thread들이 특정한 배리어 포인트에서 반복적으로 만나는 기능을 모니터링 할 수 있음.
+
+Exchanger라는 객체도 있는데 이건 2개의 thread가 연결되는 barrier임. Barrier point에 도달하면 서로 가지고 있는 값을 교환하는 식으로 함. 이건 양쪽 thread가 서로 대칭되는 작업을 할 때 좋음 (producer <-> consumer)
+
+```java
+public class CellularAutomata {
+  private final Board mainBoard;
+  private final CyclicBarrier barrier;
+  private final Worker[] workers;
+
+  public CellularAutomata(Board board) {
+    this.mainBoard = board;
+
+    int count = Runtime.getRuntime().availableProcessors();
+    // count 개수만큼의 thread가 barrier point에 도달하면
+    // mainBoard.commitNewValues()의 action을 취함 그리고 다시 barrier point를 준비
+    // 즉. 여기서는 영역을 나눠서 board의 상태르 변경하고 barrier point에
+    // 모든 thread들이 도달하면 종합함
+    this.barrier = new CyclicBarrier(count, () -> mainBoard.commitNewValues());
+
+    // core 개수만큼 board 영역을 나눠서 할당
+    this.workers = new Worker[count];
+    for (int i = 0; i < count; i++)
+      workers[i] = new Worker(mainBoard.getSubBoard(count, i));
+  }
+
+  private class Worker implements Runnable {
+    private final Board board;
+
+    public Worker(Board board) { this.board = board; }
+
+    public void run() {
+      while (!board.hasConverged()) {
+        for (int x = 0; x < board.getMaxX(); x++)
+        for (int y = 0; y < board.getMaxY(); y++)
+        board.setNewValue(x, y, computeValue(x, y));
+        try {
+          // barrier point
+          barrier.await();
+        } catch (InterruptedException ex) {
+          return;
+        } catch (BrokenBarrierException ex) {
+          return;
+        }
+      }
+    }
+  }
+
+  public void start() {
+    for (int i = 0; i < workers.length; i++)
+      new Thread(workers[i]).start();
+    mainBoard.waitForConvergence();
+  }
+}
+```
+
 ## 5.6. Building an Efficient, Scalable Result Cache
+
+```java
+public interface Computable<A, V> {
+  V compute(A arg) throws InterruptedException;
+}
+
+public class ExpensiveFunction implements Computable<String, BigInteger> {
+  public BigInteger compute(String arg) {
+    // after deep thought...
+    return new BigInteger(arg);
+  }
+}
+
+// 이러면 여러 Thread 접근할 때 단 하나만 접근이 가능해서 더 느려질 수 있음.
+public class Memorizer1<A, V> implements Computable<A, V> {
+  @GuardedBy("this")
+  private final Map<A, V> cache = new HashMap<A, V>();
+  private final Computable<A, V> c;
+
+  public Memorizer1(Computable<A, V> c) {
+    this.c = c;
+  }
+
+  public synchronized V compute(A arg) throws InterruptedException {
+    V result = cache.get(arg);
+    if (result == null) {
+      result = c.compute(arg);
+      cache.put(arg, result);
+    }
+    return result;
+  }
+}
+
+// ConcurrentHashMap를 써서 동시성 문제를 크게 개선함
+// But 동시에 compute를 접근해서 같은 연산을 반복할 수 있음
+public class Memorizer2<A, V> implements Computable<A, V> {
+  private final Map<A, V> cache = new ConcurrentHashMap<A, V>();
+  private final Computable<A, V> c;
+
+  public Memorizer2(Computable<A, V> c) { this.c = c; }
+
+  public V compute(A arg) throws InterruptedException {
+    V result = cache.get(arg);
+    if (result == null) {
+      // 여기에 동시에 같은 값으로 접근할 수 있음
+      result = c.compute(arg);
+      cache.put(arg, result);
+    }
+    return result;
+  }
+}
+
+// FutureTask를 사용해서 이미 연산중인게 있으면 그 값을 기다렸다가 return함
+// But 여전히 동시에 compute를 접근해서 같은 연산을 반복할 수 있음
+public class Memorizer3<A, V> implements Computable<A, V> {
+  private final Map<A, Future<V>> cache = new ConcurrentHashMap<A, Future<V>>();
+  private final Computable<A, V> c;
+
+  public Memorizer3(Computable<A, V> c) { this.c = c; }
+
+  public V compute(final A arg) throws InterruptedException {
+    Future<V> f = cache.get(arg);
+    if (f == null) {
+      Callable<V> eval = new Callable<V>() {
+        public V call() throws InterruptedException {
+          return c.compute(arg);
+        }
+      };
+      FutureTask<V> ft = new FutureTask<V>(eval);
+      f = ft;
+      cache.put(arg, ft);
+      ft.run(); // call to c.compute happens here
+    }
+
+    try {
+      return f.get();
+    } catch (ExecutionException e) {
+      throw launderThrowable(e.getCause());
+    }
+  }
+}
+
+// TODO
+public class Memorizer<A, V> implements Computable<A, V> {
+  private final ConcurrentMap<A, Future<V>> cache = new ConcurrentHashMap<A, Future<V>>();
+  private final Computable<A, V> c;
+
+  public Memorizer(Computable<A, V> c) { this.c = c; }
+
+  public V compute(final A arg) throws InterruptedException {
+    while (true) {
+      Future<V> f = cache.get(arg);
+      if (f == null) {
+        Callable<V> eval = new Callable<V>() {
+          public V call() throws InterruptedException {
+            return c.compute(arg);
+          }
+        };
+
+        FutureTask<V> ft = new FutureTask<V>(eval);
+        f = cache.putIfAbsent(arg, ft);
+
+        if (f == null) { f = ft; ft.run(); }
+      }
+
+      try {
+        return f.get();
+      } catch (CancellationException e) {
+        cache.remove(arg, f);
+      } catch (ExecutionException e) {
+        throw launderThrowable(e.getCause());
+      }
+    }
+  }
+}
+```
