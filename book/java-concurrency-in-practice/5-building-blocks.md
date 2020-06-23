@@ -380,14 +380,13 @@ public class Preloader {
 
 Semaphore은 공유 자원에 동시에 몇개가 접근할 수 있는지를 제어함.
 
-Semaphore는 가상 permit을 관리함. Thread가 Semaphore에 요청을 하면 permit을 받아서 작업하고 완료 후 permit을 반납함. 
+Semaphore는 가상 permit을 관리함. Thread가 Semaphore에 요청을 하면 permit을 받아서 작업하고 완료 후 permit을 반납하는 것처럼 동작함. 실제로는 아무나 acquire/release를 할 수 있음.
 
 한정된 자원에 요청을 했을 때 자원이 없는 경우 blocking상태로 만들 고 싶을 때 좋음. 예시로 db connection pool이 있음. BlockingQueue로 그럴 때 사용할 수 있음.
 
 Semaphore는 또한 일단적인 Collection을 blocking bounded상태로 만들 때 사용할 수 있음.
 
 ```java
-// ?? 이해안됨
 public class BoundedHashSet<T> {
   private final Set<T> set;
   private final Semaphore sem;
@@ -533,7 +532,9 @@ public class Memorizer2<A, V> implements Computable<A, V> {
 }
 
 // FutureTask를 사용해서 이미 연산중인게 있으면 그 값을 기다렸다가 return함
-// But 여전히 동시에 compute를 접근해서 같은 연산을 반복할 수 있음
+// 연산이 오래걸리는 경우 그 사이 다른 요청이 오면 cache에 값이 있기 때문에 기다림
+// But 여전히 동시에 compute를 접근해서 future를 생성하는 작업을 같이 할 수 있음
+// 그러면 연산도 같이 함
 public class Memorizer3<A, V> implements Computable<A, V> {
   private final Map<A, Future<V>> cache = new ConcurrentHashMap<A, Future<V>>();
   private final Computable<A, V> c;
@@ -562,7 +563,7 @@ public class Memorizer3<A, V> implements Computable<A, V> {
   }
 }
 
-// TODO
+// 최종 버전
 public class Memorizer<A, V> implements Computable<A, V> {
   private final ConcurrentMap<A, Future<V>> cache = new ConcurrentHashMap<A, Future<V>>();
   private final Computable<A, V> c;
@@ -580,6 +581,8 @@ public class Memorizer<A, V> implements Computable<A, V> {
         };
 
         FutureTask<V> ft = new FutureTask<V>(eval);
+        // 여기서 cache에 두번 넣을 수 있는 경우를 방지함
+        // 결과적으로 계산도 한번만 일어남
         f = cache.putIfAbsent(arg, ft);
 
         if (f == null) { f = ft; ft.run(); }
