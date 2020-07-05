@@ -26,17 +26,33 @@ End-of-lifecycle issue는 시스템 디자인에 중요한 요소중 하나임. 
 
 ## 7.1. Task Cancellation
 
+Task가 정상적이지 않게 종료되는 케이스가 있음
+
+- User-requested cancellation : eg. 사용자가 cancel버튼을 누른 경우
+- Time-limited activities : eg. 제한된 시간 동안 찾은 후 그 사이 최고의 solution을 내놓는 경우
+- Application events : eg. application이 작업을 나눠서 다른 thread가 처리하게 해서 찾은 경우 다른 thread들이 종료되는 경우
+- Errors : eg. crawling 중 디스크가 가득 차서 에러를 던지는 경우
+- Shutdown : Application이 종료되는 경우
+  - Graceful shutdown : 하던 작업 마무리 후 종료
+  - Immediate shutdown : 하던 작업이 있어도 그냥 종료
+
+Java에서는 thread를 죽이는 안전한 방법이 없음. 다른 Thread가 종료를 하는 등 협력적인 방법으로만 해야 함.
+
+Task를 종료할 때는 How? (어떻게 종료할 것인가?), When? (종료 요청이 온 후 언제 종료할 것인가?), What? (종료 후 어떤 response를 보낼 것인가? 또는 어떤 행동을 취할 것인가?)를 생각해야 함.
+
 ```java
+// stopping thread by flag
 @ThreadSafe
 public class PrimeGenerator implements Runnable {
   @GuardedBy("this")
   private final List<BigInteger> primes = new ArrayList<BigInteger>();
 
+  // note that it must be volatile
   private volatile boolean cancelled;
 
   public void run() {
     BigInteger p = BigInteger.ONE;
-    while (!cancelled ) {
+    while (!cancelled) {
       p = p.nextProbablePrime();
       synchronized (this) {
         primes.add(p);
@@ -50,13 +66,12 @@ public class PrimeGenerator implements Runnable {
     return new ArrayList<BigInteger>(primes);
   }
 }
-```
 
-```java
 List<BigInteger> aSecondOfPrimes() throws InterruptedException {
   PrimeGenerator generator = new PrimeGenerator();
   new Thread(generator).start();
   try {
+    // 1초 뒤 멈춤
     SECONDS.sleep(1);
   } finally {
     generator.cancel();
@@ -67,9 +82,106 @@ List<BigInteger> aSecondOfPrimes() throws InterruptedException {
 
 ### Interruption
 
+flag로 thread를 죽이는 것은 flag 체크로 진입조차 하지 못하는 상황이 되면 잘 안될 수 있음.
+
+```java
+// producer가 consumer보다 더 빨리 생성하는 경우 queue.put에서 blocking이 걸림
+// 이 경우 flag 체크도 진입조차 못함
+class BrokenPrimeProducer extends Thread {
+  private final BlockingQueue<BigInteger> queue;
+
+  private volatile boolean cancelled = false;
+
+  BrokenPrimeProducer(BlockingQueue<BigInteger> queue) {
+    this.queue = queue;
+  }
+
+  public void run() {
+    try {
+      BigInteger p = BigInteger.ONE;
+      while (!cancelled) {
+        queue.put(p = p.nextProbablePrime());
+      }
+    } catch (InterruptedException consumed) { }
+  }
+
+  public void cancel() { cancelled = true; }
+}
+
+void consumePrimes() throws InterruptedException {
+  BlockingQueue<BigInteger> primes = ...;
+  BrokenPrimeProducer producer = new BrokenPrimeProducer(primes);
+  producer.start();
+  try {
+    while (needMorePrimes()) {
+      consume(primes.take());
+    }
+  } finally {
+    producer.cancel();
+  }
+}
+```
+
+Thread에는 interrupted라는 boolean status가 있음.
+
+Blocking method인 `Thread.sleep`이나 `Object.wait`는 interrupt가 발생하면 InterruptException을 던짐.
+
+Non-blocking 케이스의 경우 cancel되어야 하는 Thread가 interrupt flag를 pooling하면서 처리해야함. 안하면 그냥 그 interrupted flag는 방치됨. 즉 interrupt를 거는 것은 단순히 interrupt를 하라는 메시지만 남기는 것 뿐임. 처리는 직접 해줘야 함.
+
+```java
+public class Thread {
+  // interrupt a thread
+  public void interrupt() { ... }
+
+  public boolean isInterrupted() { ... }
+
+  // clear interrupt status & return previous status
+  // this is the only way to clear interrupt status
+  // so, BE CAREFUL to use this method
+  public static boolean interrupted() { ... }
+}
+```
+
+하지만 어찌됬건 interrupt를 하는 방법이 최선임. cancel을 사용하는 것 보다 interrupt flag를 활용하자.
+
+```java
+class PrimeProducer extends Thread {
+  private final BlockingQueue<BigInteger> queue;
+
+  PrimeProducer(BlockingQueue<BigInteger> queue) {
+    this.queue = queue;
+  }
+
+  public void run() {
+    try {
+      BigInteger p = BigInteger.ONE;
+      // TODO
+      // 여기서 체크를 해주는게 p.nextProbablePrime()를 안해주는 의미가 있다는데
+      // 그럼 InterruptedException 안던져지는거 아님?
+      while (!Thread.currentThread().isInterrupted()) {
+        // queue.put이 어차피 interrupt 걸렸을 경우 InterruptedException 던짐
+        queue.put(p = p.nextProbablePrime());
+      }
+    } catch (InterruptedException consumed) {
+      /* Allow thread to exit */
+    }
+  }
+
+  public void cancel() { interrupt(); }
+}
+```
+
 ### Interruption Policies
 
+Thread는 interrupt가 발생했을 때 무엇을 할 것인지? 어떠한 작업들이 atomic한지? interrupt에 대해서 얼마나 빨리 반응해야 하는지 등의 정책이 있어야 함.
+
+interrupt는 작업을 중단시키라는 의미일 수도 있고 작업을 수행하는 thread를 중단시키라는 의미일 수도 있음.
+
+작업 코드 자체 (eg. Runnable을 구현한 녀석)에서는 interrupt가 어떤 의미인지 가정을 해서는 안되고 Thread를 소유하는 녀석이 처리할 수 있게 interrupt 상태를 유지해야 함. `Thread.currentThread().interrupt()`를 통해 유지하거나 InterruptedException을 던져야 함.
+
 ### Responding to Interruption
+
+TODO
 
 ### Example: Timed Run
 
@@ -81,15 +193,328 @@ List<BigInteger> aSecondOfPrimes() throws InterruptedException {
 
 ## 7.2. Stopping a Thread based Service
 
+Thread에 대한 엄밀한 소유권은 없음. But thread를 생성한 객체가 해당 Thread를 소유한다고 생각하면 Thread pool이 해당 thread를 소유한다고 생각할 수 있음. 이런 식으로 캡슐화를 하면 thread에 대한 관리를 캡슐화된 객체 단위로 할 수 있음. ExecutorService가 대표적인 예시임(shutdown, shutdownNow를 제공).
+
 ### Example: A Logging Service
+
+Producer consumer example.
+
+```java
+// LogWriter의 log를 호출하는 쪽이 producer, LoggerThread가 consumer가 됨
+// But 이 코드는 queueing된 log를 다 날려버린다는 문제와
+// queue가 가득 차서 queue.put에서 blocking된 producer가 계속 기다릴 수도 있음
+public class LogWriter {
+  private final BlockingQueue<String> queue;
+  private final LoggerThread logger;
+
+  public LogWriter(Writer writer) {
+    this.queue = new LinkedBlockingQueue<String>(CAPACITY);
+    this.logger = new LoggerThread(writer);
+  }
+
+  public void start() { logger.start(); }
+
+  public void log(String msg) throws InterruptedException {
+    queue.put(msg);
+  }
+
+  private class LoggerThread extends Thread {
+    private final PrintWriter writer;
+    ...
+    public void run() {
+      try {
+        while (true) {
+          writer.println(queue.take());
+        }
+      } catch (InterruptedException ignored) {
+        // LoggerThread.interrupt가 발생한 경우
+        // eg. 이 thread에서 무한 대기 상태
+      } finally {
+        writer.close();
+      }
+    }
+  }
+}
+```
+
+shutdownRequested flag 활용.
+
+```java
+// gracefully shutdown을 위해 이렇게 하고
+// shutdownRequested일 경우 뒷처리를 하고 종료할 수도 있음
+
+// But shutdownRequested 변수 부분에서 race condition이 발생할 수 있음
+// 그렇다고 race condition을 해결하기 위해 log자체에 lock을 걸어도
+// put에서 blocking된 상태가 발생할 수 있음?!?!
+public void log(String msg) throws InterruptedException {
+  if (shutdownRequested) {
+    throw new IllegalStateException("logger is shut down");
+  }
+  queue.put(msg);
+}
+```
+
+reservation라는 변수를 활용.
+
+```java
+// reservation이라는 변수를 활용해서 shutdown 시점에 put 요청을 했지만
+// blocking된 상태인 log들을 모두 처리할 수 있게 만듬
+public class LogService {
+  private final BlockingQueue<String> queue;
+  private final LoggerThread loggerThread;
+  private final PrintWriter writer;
+  @GuardedBy("this") private boolean isShutdown;
+  @GuardedBy("this") private int reservations;
+
+  public void start() { loggerThread.start(); }
+
+  public void stop() {
+    synchronized (this) { isShutdown = true; }
+    loggerThread.interrupt();
+  }
+
+  public void log(String msg) throws InterruptedException {
+    synchronized (this) {
+      if (isShutdown) {
+        throw new IllegalStateException(...);
+      }
+      ++reservations;
+    }
+    queue.put(msg);
+  }
+
+  private class LoggerThread extends Thread {
+    public void run() {
+      try {
+        while (true) {
+          try {
+            synchronized (this) {
+              if (isShutdown && reservations == 0) {
+                break;
+              }
+            }
+            String msg = queue.take();
+            synchronized (this) { --reservations; }
+            writer.println(msg);
+          } catch (InterruptedException e) { /* retry */ }
+        }
+      } finally {
+        writer.close();
+      }
+    }
+  }
+}
+```
 
 ### ExecutorService Shutdown
 
+thread를 직접 죽이지 않고 ExecutorService의 shutdown을 이용할 수도 있음.
+
+```java
+public class LogService {
+  private final ExecutorService exec = newSingleThreadExecutor();
+  ...
+  public void start() { }
+
+  public void stop() throws InterruptedException {
+    try {
+      // shutdown과 awaitTermination는 보통 같이 쓰임
+      // 종료 요청을 하고 종료되기 까지 기다림
+      // exec.awaitTermination의 return 값 가지고 종료 여부에 따라 처리해줘야함
+      exec.shutdown();
+      exec.awaitTermination(TIMEOUT, UNIT);
+    } finally {
+      writer.close();
+    }
+  }
+
+  public void log(String msg) {
+    try {
+      exec.execute(new WriteTask(msg));
+    } catch (RejectedExecutionException ignored) { }
+  }
+}
+```
+
 ### Poison Pills
+
+Producer가 queue에서 독약 객체를 만나면 종료하는 방법. 독약 객체보다 먼저들어간 객체들은 처리됨. 한번 독약 객체를 넣고 나서 더이상 다른 task를 넣지 못하게 막아줘야함.
+
+Producer가 여러개인 경우 consumer에서는 producer 개수 만큼 독약 객체가 들어오면 종료. Consumer가 여러개인 경우 producer가 consumer 개수 만큼 독약 객체를 넣어주면 됨.
+
+```java
+public class IndexingService {
+  private static final File POISON = new File("");
+  private final BlockingQueue<File> queue;
+  private final FileFilter fileFilter;
+  private final File root;
+
+  private final CrawlerThread producer = new CrawlerThread();
+  private final IndexerThread consumer = new IndexerThread();
+
+  public class CrawlerThread extends Thread {
+    public void run() {
+      try {
+        crawl(root);
+      } catch (InterruptedException e) {
+        /* fall through */
+      } finally {
+        // interrupt 걸리면 queue에 POISON 객체를 쌓아버림
+        while (true) {
+          try {
+            queue.put(POISON);
+            break;
+          } catch (InterruptedException e1) { /* retry */ }
+          }
+        }
+    }
+
+    private void crawl(File root) throws InterruptedException {
+    ...
+    }
+  }
+
+  public class IndexerThread extends Thread {
+    public void run() {
+      try {
+        while (true) {
+          File file = queue.take();
+          // POISON 객체를 만나면 끝
+          if (file == POISON) {
+            break;
+          }
+          indexFile(file);
+        }
+      } catch (InterruptedException consumed) { }
+    }
+  }
+
+  public void start() {
+    producer.start();
+    consumer.start();
+  }
+
+  public void stop() { producer.interrupt(); }
+
+  public void awaitTermination() throws InterruptedException {
+    consumer.join();
+  }
+}
+```
 
 ### Example: A One-shot Execution Service
 
+TODO
+
+```java
+boolean checkMail(Set<String> hosts, long timeout, TimeUnit unit)
+    throws InterruptedException {
+  ExecutorService exec = Executors.newCachedThreadPool();
+  final AtomicBoolean hasNewMail = new AtomicBoolean(false);
+  try {
+    for (final String host : hosts) {
+      exec.execute(new Runnable() {
+        public void run() {
+          if (checkMail(host)) {
+            hasNewMail.set(true);
+          }
+        }
+      });
+    }
+  } finally {
+    exec.shutdown();
+    exec.awaitTermination(timeout, unit);
+  }
+  return hasNewMail.get();
+}
+```
+
 ### Limitations of Shutdownnow
+
+TODO
+
+```java
+public class TrackingExecutor extends AbstractExecutorService {
+  private final ExecutorService exec;
+  private final Set<Runnable> tasksCancelledAtShutdown = Collections.synchronizedSet(new HashSet<Runnable>());
+  ...
+  public List<Runnable> getCancelledTasks() {
+    if (!exec.isTerminated()) {
+      throw new IllegalStateException(...);
+    }
+    return new ArrayList<Runnable>(tasksCancelledAtShutdown);
+  }
+
+  public void execute(final Runnable runnable) {
+    exec.execute(new Runnable() {
+      public void run() {
+        try {
+          runnable.run();
+        } finally {
+          if (isShutdown() && Thread.currentThread().isInterrupted()) {
+            tasksCancelledAtShutdown.add(runnable);
+          }
+        }
+      }
+    });
+  }
+  // delegate other ExecutorService methods to exec
+}
+```
+
+```java
+public abstract class WebCrawler {
+  private volatile TrackingExecutor exec;
+  @GuardedBy("this")
+  private final Set<URL> urlsToCrawl = new HashSet<URL>();
+  ...
+  public synchronized void start() {
+    exec = new TrackingExecutor(Executors.newCachedThreadPool());
+    for (URL url : urlsToCrawl) {
+      submitCrawlTask(url);
+    }
+    urlsToCrawl.clear();
+  }
+
+  public synchronized void stop() throws InterruptedException {
+    try {
+      saveUncrawled(exec.shutdownNow());
+      if (exec.awaitTermination(TIMEOUT, UNIT)) {
+        saveUncrawled(exec.getCancelledTasks());
+      }
+    } finally {
+      exec = null;
+    }
+  }
+
+  protected abstract List<URL> processPage(URL url);
+
+  private void saveUncrawled(List<Runnable> uncrawled) {
+    for (Runnable task : uncrawled) {
+      urlsToCrawl.add(((CrawlTask) task).getPage());
+    }
+  }
+
+  private void submitCrawlTask(URL u) {
+    exec.execute(new CrawlTask(u));
+  }
+
+  private class CrawlTask implements Runnable {
+    private final URL url;
+    ...
+    public void run() {
+      for (URL link : processPage(url)) {
+        if (Thread.currentThread().isInterrupted()) {
+          return;
+        }
+        submitCrawlTask(link);
+      }
+    }
+
+    public URL getPage() { return url; }
+  }
+}
+```
 
 ## 7.3. Handling Abnormal Thread Termination
 
