@@ -1,6 +1,6 @@
-# Tech Summary
+# Reading Summary
 
-A summary of technical readings.
+A summary of articles, books
 
 ## Structure
 
