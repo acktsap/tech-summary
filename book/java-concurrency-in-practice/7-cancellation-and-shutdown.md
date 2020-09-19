@@ -383,6 +383,7 @@ public class IndexingService {
           if (file == POISON) {
             break;
           }
+
           indexFile(file);
         }
       } catch (InterruptedException consumed) { }
