@@ -181,15 +181,124 @@ interrupt는 작업을 중단시키라는 의미일 수도 있고 작업을 수�
 
 ### Responding to Interruption
 
-TODO
+`Thread.sleep` 또는 `BlockingQueue.put`같은 것을 쓰면 `InterruptedException`이 발생할 수 있음. 다음의 두 가지 전략을 처리할 수 있음.
+
+- `InterruptedException`를 상위로 propagation시킨다.
+- `InterruptedException` 을 잡아서 제거된 interrupt 상태를 되돌려놓는다.
+
+todo
 
 ### Example: Timed Run
 
 ### Cancellation Via Future
 
+```java
+public static void timedRun(Runnable r, long timeout, TimeUnit unit)
+    throws InterruptedException {
+  Future<?> task = taskExec.submit(r);
+  try {
+    task.get(timeout, unit);
+  } catch (TimeoutException e) {
+    // task will be cancelled below
+  } catch (ExecutionException e) {
+    // exception thrown in task; rethrow
+    throw launderThrowable(e.getCause());
+  } finally {
+    // Harmless if task already completed
+    task.cancel(true); // interrupt if running
+  }
+}
+```
+
 ### Dealing with Non-interruptible Blocking
 
+todo
+
+```java
+public class ReaderThread extends Thread {
+  private final Socket socket;
+  private final InputStream in;
+
+  public ReaderThread(Socket socket) throws IOException {
+    this.socket = socket;
+    this.in = socket.getInputStream();
+  }
+
+  public void interrupt() {
+    try {
+      socket.close();
+    } catch (IOException ignored) {
+    } finally {
+      super.interrupt();
+    }
+  }
+
+  public void run() {
+    try {
+      byte[] buf = new byte[BUFSZ];
+      while (true) {
+        int count = in.read(buf);
+        if (count < 0) {
+          break;
+        } else if (count > 0) {
+          processBuffer(buf, count);
+        }
+      }
+    } catch (IOException e) { /* Allow thread to exit */ }
+  }
+}
+```
+
 ### Encapsulating Nonstandard Cancellation with Newtaskfor
+
+```java
+// custom Callable with cancel interface
+public interface CancellableTask<T> extends Callable<T> {
+  void cancel();
+  RunnableFuture<T> newTask();
+}
+
+// custom ThreadPoolExecutor using CancellableTask interface
+@ThreadSafe
+public class CancellingExecutor extends ThreadPoolExecutor {
+  ...
+  protected<T> RunnableFuture<T> newTaskFor(Callable<T> callable) {
+    if (callable instanceof CancellableTask) {
+      return ((CancellableTask<T>) callable).newTask();
+    } else {
+      return super.newTaskFor(callable);
+    }
+  }
+}
+
+// CancellableTask 사용법. 이걸 사용하면 socket.close를 알아서 할 수 있음.
+// hooking의 기능에서 좋음.
+public abstract class SocketUsingTask<T> implements CancellableTask<T> {
+  @GuardedBy("this") private Socket socket;
+
+  protected synchronized void setSocket(Socket s) { socket = s; }
+
+  public synchronized void cancel() {
+    try {
+      if (socket != null) {
+        socket.close();
+      }
+    } catch (IOException ignored) { }
+  }
+
+  public RunnableFuture<T> newTask() {
+    return new FutureTask<T>(this) {
+      public boolean cancel(boolean mayInterruptIfRunning) {
+        try {
+          SocketUsingTask.this.cancel();
+        } finally {
+          return super.cancel(mayInterruptIfRunning);
+        }
+      }
+    };
+  }
+}
+```
 
 ## 7.2. Stopping a Thread based Service
 
@@ -308,7 +417,7 @@ public class LogService {
 
 ### ExecutorService Shutdown
 
-thread를 직접 죽이지 않고 ExecutorService의 shutdown을 이용할 수도 있음.
+flag를 써서 thread를 직접 죽이지 않고 ExecutorService의 shutdown을 이용할 수도 있음.
 
 ```java
 public class LogService {

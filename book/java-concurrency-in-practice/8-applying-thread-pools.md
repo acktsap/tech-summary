@@ -1,6 +1,6 @@
-# Applying Thread Pools
+# 8. Applying Thread Pools
 
-- [Applying Thread Pools](#applying-thread-pools)
+- [8. Applying Thread Pools](#8-applying-thread-pools)
   - [8.1. Implicit Couplings Between Tasks and Execution Policies](#81-implicit-couplings-between-tasks-and-execution-policies)
     - [Thread Starvation Deadlock](#thread-starvation-deadlock)
     - [Long-running Tasks](#long-running-tasks)
@@ -79,7 +79,8 @@ ThreadPoolExecutor는 Executors framework의 newCachedThreadPool, newFixedThread
   keepAliveTime : idle상태로 이 시간보다 오래 존재한 thread는 종료 대상이 됨 (corePoolSize 까지)
   workQueue : pool size가 coreSize랑 같으면 이 queue가 가득 차야 여분의 thread를 만듬 (maximumPoolSize 까지)
 */
-public ThreadPoolExecutor(int corePoolSize,
+public ThreadPoolExecutor(
+    int corePoolSize,
     int maximumPoolSize,
     long keepAliveTime,
     TimeUnit unit,
