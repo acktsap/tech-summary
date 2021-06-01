@@ -20,7 +20,7 @@ public class WaitNotify {
   protected static class Notify extends Thread {
     public void run() {
       while (true) {
-        System.out.print("Doing long operation.. ");
+        System.out.println("Doing long operation.. ");
         for (int i = 0; i < 90_000_000; ++i) { }
 
         synchronized (WaitNotify.Lock) {
